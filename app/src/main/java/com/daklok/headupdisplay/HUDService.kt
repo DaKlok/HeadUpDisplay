@@ -15,9 +15,9 @@ class HUDService : NotificationListenerService() {
     private var bluetoothSocket: BluetoothSocket? = null
     private var outputStream: OutputStream? = null
 
-    // Standard SerialPortService ID for ESP32/Arduino Bluetooth
+
     private val MY_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
-    private val DEVICE_NAME = "ESP32_HUD" // <--- CHANGE THIS to your ESP32's Bluetooth name
+    private val DEVICE_NAME = "HUD-ESP32" // meno esp32
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == "com.google.android.apps.maps") {
@@ -27,25 +27,24 @@ class HUDService : NotificationListenerService() {
             val text = extras.getCharSequence("android.text")?.toString() ?: ""
             val fullContext = "$title $text"
 
-            // 1. Extract Maneuver
+            // smer
             val directionKeywords = "(?:left|right|straight|slight left|slight right|sharp left|sharp right)"
             val exitPattern = "(\\d+(?:st|nd|rd|th))"
             val exitMatch = Regex(exitPattern, RegexOption.IGNORE_CASE).find(fullContext)
             val directionMatch = Regex(directionKeywords, RegexOption.IGNORE_CASE).find(fullContext)
             val maneuver = listOf(exitMatch?.value ?: "", directionMatch?.value ?: "").filter { it.isNotEmpty() }.joinToString(" ")
 
-            // 2. Extract Distance
+            // vzdialenost
             val distanceRegex = "(\\d+(?:[.,]\\d+)?\\s*(?:km|m))".toRegex()
             val distanceOnly = distanceRegex.find(fullContext)?.value ?: ""
 
-            // 3. Extract Arrival Time
+            // Cas
             val subText = extras.getCharSequence("android.subText")?.toString() ?: ""
             val timeRegex = "([0-9]{1,2}:[0-9]{2})".toRegex()
             val arrivalTime = timeRegex.find(subText)?.value ?: ""
 
-            // Create a formatted string to send to ESP32
-            // Format: Maneuver|Distance|Arrival (e.g., "2nd right|5.7 km|03:18")
-            val dataToSend = "$maneuver|$distanceOnly|$arrivalTime\n"
+
+            val dataToSend = "$maneuver,$distanceOnly,$arrivalTime\n"
 
             sendDataToBluetooth(dataToSend)
             Log.d("HUD_DEBUG", "Sent to BT: $dataToSend")
