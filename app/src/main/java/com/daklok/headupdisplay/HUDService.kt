@@ -28,7 +28,7 @@ class HUDService : NotificationListenerService() {
             val fullContext = "$title $text"
 
             // smer
-            val directionKeywords = "(?:left|right|straight|slight left|slight right|sharp left|sharp right)"
+            val directionKeywords = "(?:left|right|straight|slight left|slight right|sharp left|sharp right|uturn|merge|exit)"
             val exitPattern = "(\\d+(?:st|nd|rd|th))"
             val exitMatch = Regex(exitPattern, RegexOption.IGNORE_CASE).find(fullContext)
             val directionMatch = Regex(directionKeywords, RegexOption.IGNORE_CASE).find(fullContext)
@@ -36,7 +36,7 @@ class HUDService : NotificationListenerService() {
 
             // vzdialenost
             val distanceRegex = "(\\d+(?:[.,]\\d+)?\\s*(?:km|m))".toRegex()
-            val distanceOnly = distanceRegex.find(fullContext)?.value ?: ""
+            val distanceOnly = distanceRegex.find(fullContext)?.value?.replace("\\s".toRegex(), "") ?: ""
 
             // Cas
             val subText = extras.getCharSequence("android.subText")?.toString() ?: ""
@@ -48,6 +48,7 @@ class HUDService : NotificationListenerService() {
 
             sendDataToBluetooth(dataToSend)
             Log.d("HUD_DEBUG", "Sent to BT: $dataToSend")
+            LogManager.log("Sent: ${dataToSend.trim()}")
         }
     }
 
@@ -59,15 +60,19 @@ class HUDService : NotificationListenerService() {
             outputStream?.write(data.toByteArray())
         } catch (e: Exception) {
             Log.e("HUD_DEBUG", "Error sending BT data: ${e.message}")
+            LogManager.log("Error: ${e.message}")
+            LogManager.setConnected(false)
             bluetoothSocket = null // Reset for retry next time
         }
     }
 
 
     private fun connectToEsp32() {
-        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter() ?: return
+        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter() ?: run {
+            LogManager.log("BT Adapter not found")
+            return
+        }
 
-        // On Android 12 (API 31) and above, we must check BLUETOOTH_CONNECT
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             if (androidx.core.content.ContextCompat.checkSelfPermission(
                     this,
@@ -75,6 +80,7 @@ class HUDService : NotificationListenerService() {
                 ) != android.content.pm.PackageManager.PERMISSION_GRANTED
             ) {
                 Log.e("HUD_DEBUG", "Missing BLUETOOTH_CONNECT permission")
+                LogManager.log("Permission Missing: BT CONNECT")
                 return
             }
         }
@@ -84,17 +90,24 @@ class HUDService : NotificationListenerService() {
             val device = pairedDevices.find { it.name == DEVICE_NAME }
 
             if (device != null) {
+                LogManager.log("Connecting to ${device.name}...")
                 bluetoothSocket = device.createRfcommSocketToServiceRecord(MY_UUID)
                 bluetoothSocket?.connect()
                 outputStream = bluetoothSocket?.outputStream
                 Log.d("HUD_DEBUG", "Bluetooth Connected to ${device.name}")
+                LogManager.log("Connected to ${device.name}")
+                LogManager.setConnected(true)
             } else {
-                Log.e("HUD_DEBUG", "ESP32 Device '$DEVICE_NAME' not found in paired devices")
+                Log.e("HUD_DEBUG", "ESP32 Device '$DEVICE_NAME' not found")
+                LogManager.log("Device '$DEVICE_NAME' not found")
             }
         } catch (e: SecurityException) {
-            Log.e("HUD_DEBUG", "SecurityException: Permission denied at runtime: ${e.message}")
+            Log.e("HUD_DEBUG", "SecurityException: ${e.message}")
+            LogManager.log("Security error: ${e.message}")
         } catch (e: Exception) {
             Log.e("HUD_DEBUG", "Connection failed: ${e.message}")
+            LogManager.log("Connection failed: ${e.message}")
+            LogManager.setConnected(false)
             bluetoothSocket = null
         }
     }
@@ -103,12 +116,15 @@ class HUDService : NotificationListenerService() {
         super.onDestroy()
         try {
             bluetoothSocket?.close()
+            LogManager.setConnected(false)
+            LogManager.log("Service Destroyed")
         } catch (e: Exception) { }
     }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.d("HUD_DEBUG", "INTERNAL: Service is officially CONNECTED")
+        LogManager.log("Listener Service Connected")
         connectToEsp32()
     }
 
